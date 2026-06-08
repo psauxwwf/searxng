@@ -1,0 +1,122 @@
+services:
+  traefik:
+    image: docker.io/traefik:v3.4
+    container_name: traefik
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=searxng
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entryPoint.to=websecure
+      - --entrypoints.web.http.redirections.entryPoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.email=${LETSENCRYPT_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config/traefik/dynamic:/etc/traefik/dynamic:ro
+      - ./secrets:/run/secrets:ro
+      - ./traefik/acme:/letsencrypt
+    restart: unless-stopped
+    networks:
+      - searxng
+
+  valkey:
+    image: docker.io/valkey/valkey:9-alpine
+    container_name: valkey
+    command: valkey-server --save 30 1 --loglevel warning
+    restart: unless-stopped
+    volumes:
+      - valkey-data:/data
+    networks:
+      - searxng
+
+  searxng:
+    # Pinned, not :latest — odysseus waits on searxng's healthcheck
+    # (depends_on: condition: service_healthy), so a broken upstream `latest`
+    # tag blocks the whole app from starting. 2026.6.2 crashes on boot with
+    # `KeyError: 'default_doi_resolver'`, failing the healthcheck (issue #1414).
+    # Bump this deliberately after verifying a newer tag boots clean.
+    image: docker.io/searxng/searxng:2026.5.31-7159b8aed
+    container_name: searxng
+    init: true
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        if [ ! -s /etc/searxng/settings.yml ] || grep -q 'odysseus-local-searxng-json-2026-05-30\|__SEARXNG_SECRET__\|__SEARXNG_HOSTNAME__' /etc/searxng/settings.yml; then
+          secret="$${SEARXNG_SECRET:-}"
+          host="$${SEARXNG_HOSTNAME:-}"
+          if [ -z "$$secret" ]; then
+            secret="$$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+          fi
+          if [ -z "$$host" ]; then
+            echo >&2 "SEARXNG_HOSTNAME is required"
+            exit 1
+          fi
+          sed -e "s|__SEARXNG_SECRET__|$$secret|g" -e "s|__SEARXNG_HOSTNAME__|$$host|g" /tmp/searxng-settings.yml.template > /etc/searxng/settings.yml
+        fi
+        exec /usr/local/searxng/entrypoint.sh
+    depends_on:
+      - valkey
+    volumes:
+      - ./data:/etc/searxng
+      - ./cache:/var/cache/searxng
+      - ./config/searxng/settings.yml:/tmp/searxng-settings.yml.template:ro,z
+      - ./config/searxng/limiter.toml:/etc/searxng/limiter.toml:ro,z
+    environment:
+      - SEARXNG_BASE_URL=https://${SEARXNG_HOSTNAME}/
+      - SEARXNG_HOSTNAME=${SEARXNG_HOSTNAME}
+      - SEARXNG_SECRET=${SEARXNG_SECRET:-}
+    # The official searxng image runs as the non-root `searxng` user, but its
+    # entrypoint still needs to chown /etc/searxng on first boot, drop privs via
+    # su-exec, and (with our wrapper above) write settings.yml into the named
+    # volume. Without these capabilities the wrapper aborts at the redirection
+    # with EACCES and the container fails its healthcheck with permission
+    # errors during setup. Mirrors the cap set recommended by the upstream
+    # searxng-docker compose file. See issue #721.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'python -c "import urllib.request; req = urllib.request.Request(''http://localhost:8080/'', headers={''X-Real-IP'': ''127.0.0.1''}); urllib.request.urlopen(req, timeout=5).read(1)"',
+        ]
+      interval: 5s
+      timeout: 6s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=searxng
+      - traefik.http.routers.searxng.rule=Host(`${SEARXNG_HOSTNAME}`)
+      - traefik.http.routers.searxng.entrypoints=websecure
+      - traefik.http.routers.searxng.tls=true
+      - traefik.http.routers.searxng.tls.certresolver=letsencrypt
+      - traefik.http.routers.searxng.middlewares=searxng-auth@file,searxng-security@file,searxng-ratelimit@file
+      - traefik.http.services.searxng.loadbalancer.server.port=8080
+    networks:
+      - searxng
+
+volumes:
+  valkey-data:
+
+networks:
+  searxng:
+    name: searxng
+    driver: bridge

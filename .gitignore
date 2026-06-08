@@ -1,0 +1,5 @@
+/.env
+/secrets/traefik-users
+/traefik/acme/acme.json
+/data
+/secrets

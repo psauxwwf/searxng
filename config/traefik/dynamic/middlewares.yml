@@ -1,0 +1,23 @@
+http:
+  middlewares:
+    searxng-auth:
+      basicAuth:
+        usersFile: /run/secrets/traefik-users
+        removeHeader: true
+
+    searxng-security:
+      headers:
+        browserXssFilter: true
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: no-referrer
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        customResponseHeaders:
+          Permissions-Policy: interest-cohort=()
+
+    searxng-ratelimit:
+      rateLimit:
+        average: 30
+        burst: 60
