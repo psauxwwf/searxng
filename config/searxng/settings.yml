@@ -1,21 +1,14 @@
 use_default_settings:
   engines:
     remove:
-      - ahmia
       - radio browser
-      - torch
-      - wikidata
 
 server:
   secret_key: "__SEARXNG_SECRET__"
-  base_url: "https://__SEARXNG_HOSTNAME__/"
-  limiter: true
+  limiter: false
   public_instance: false
 
 search:
   formats:
     - html
     - json
-
-valkey:
-  url: valkey://valkey:6379/0

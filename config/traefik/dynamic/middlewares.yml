@@ -1,11 +1,6 @@
 http:
   middlewares:
-    searxng-auth:
-      basicAuth:
-        usersFile: /run/secrets/traefik-users
-        removeHeader: true
-
-    searxng-security:
+    mcp-security:
       headers:
         browserXssFilter: true
         contentTypeNosniff: true
@@ -17,7 +12,7 @@ http:
         customResponseHeaders:
           Permissions-Policy: interest-cohort=()
 
-    searxng-ratelimit:
+    mcp-ratelimit:
       rateLimit:
         average: 30
         burst: 60
