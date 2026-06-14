@@ -14,13 +14,14 @@ COPY --from=mcp-build /usr/local/bin/node /usr/local/bin/
 COPY --from=mcp-build /usr/local/lib/node_modules /usr/local/lib/node_modules
 
 COPY config/searxng/settings.yml /usr/local/share/searxng/settings.yml.template
-COPY docker/combined-entrypoint.sh /usr/local/bin/combined-entrypoint.sh
+COPY config/searxng/limiter.toml /usr/local/share/searxng/limiter.toml
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 RUN ln -sf /usr/local/lib/node_modules/mcp-searxng/dist/cli.js /usr/local/bin/mcp-searxng \
-    && chmod 0755 /usr/local/bin/combined-entrypoint.sh
+    && chmod 0755 /usr/local/bin/entrypoint.sh
 
 ENV SEARXNG_URL=http://127.0.0.1:8080
 
-EXPOSE 3000
+EXPOSE 3000 8080
 
-ENTRYPOINT ["/usr/local/bin/combined-entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

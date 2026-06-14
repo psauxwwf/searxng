@@ -1,7 +1,14 @@
-use_default_settings: true
+use_default_settings:
+  engines:
+    remove:
+      - ahmia
+      - radio browser
+      - torch
 
 server:
   secret_key: "__SEARXNG_SECRET__"
+  limiter: false
+  public_instance: false
 
 search:
   formats:

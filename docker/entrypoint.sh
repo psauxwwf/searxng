@@ -2,31 +2,25 @@
 set -eu
 
 cleanup() {
-  if [ "${mcp_pid:-}" != "" ]; then
-    kill "$mcp_pid" 2>/dev/null || true
-  fi
-  if [ "${searxng_pid:-}" != "" ]; then
-    kill "$searxng_pid" 2>/dev/null || true
-  fi
+	if [ "${mcp_pid:-}" != "" ]; then
+		kill "$mcp_pid" 2>/dev/null || true
+	fi
+	if [ "${searxng_pid:-}" != "" ]; then
+		kill "$searxng_pid" 2>/dev/null || true
+	fi
 }
 
-on_signal() {
-  cleanup
-  wait "${mcp_pid:-}" 2>/dev/null || true
-  wait "${searxng_pid:-}" 2>/dev/null || true
-  exit 143
-}
-
-trap on_signal INT TERM
+trap 'cleanup; wait "${mcp_pid:-}" 2>/dev/null || true; wait "${searxng_pid:-}" 2>/dev/null || true; exit 143' INT TERM
 
 mkdir -p /etc/searxng /var/cache/searxng
 
 secret="${SEARXNG_SECRET:-}"
 if [ -z "$secret" ]; then
-  secret="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+	secret="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
 fi
 sed -e "s|__SEARXNG_SECRET__|$secret|g" \
-  /usr/local/share/searxng/settings.yml.template > /etc/searxng/settings.yml
+	/usr/local/share/searxng/settings.yml.template >/etc/searxng/settings.yml
+cp /usr/local/share/searxng/limiter.toml /etc/searxng/limiter.toml
 
 export SEARXNG_URL="${SEARXNG_URL:-http://127.0.0.1:8080}"
 
@@ -56,30 +50,30 @@ sys.exit(1)
 PY
 
 if [ -z "${MCP_HTTP_PORT:-}" ]; then
-  if command -v su-exec >/dev/null 2>&1; then
-    exec su-exec searxng node /usr/local/lib/node_modules/mcp-searxng/dist/cli.js
-  fi
-  exec node /usr/local/lib/node_modules/mcp-searxng/dist/cli.js
+	if command -v su-exec >/dev/null 2>&1; then
+		exec su-exec searxng node /usr/local/lib/node_modules/mcp-searxng/dist/cli.js
+	fi
+	exec node /usr/local/lib/node_modules/mcp-searxng/dist/cli.js
 fi
 
 if command -v su-exec >/dev/null 2>&1; then
-  su-exec searxng node /usr/local/lib/node_modules/mcp-searxng/dist/cli.js &
+	su-exec searxng node /usr/local/lib/node_modules/mcp-searxng/dist/cli.js &
 else
-  node /usr/local/lib/node_modules/mcp-searxng/dist/cli.js &
+	node /usr/local/lib/node_modules/mcp-searxng/dist/cli.js &
 fi
 mcp_pid=$!
 
 status=0
 while :; do
-  if ! kill -0 "$searxng_pid" 2>/dev/null; then
-    wait "$searxng_pid" || status=$?
-    break
-  fi
-  if ! kill -0 "$mcp_pid" 2>/dev/null; then
-    wait "$mcp_pid" || status=$?
-    break
-  fi
-  sleep 1
+	if ! kill -0 "$searxng_pid" 2>/dev/null; then
+		wait "$searxng_pid" || status=$?
+		break
+	fi
+	if ! kill -0 "$mcp_pid" 2>/dev/null; then
+		wait "$mcp_pid" || status=$?
+		break
+	fi
+	sleep 1
 done
 
 cleanup
