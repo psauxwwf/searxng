@@ -24,7 +24,7 @@ cp /usr/local/share/searxng/limiter.toml /etc/searxng/limiter.toml
 
 export SEARXNG_URL="${SEARXNG_URL:-http://127.0.0.1:8080}"
 
-/usr/local/searxng/entrypoint.sh &
+/usr/local/searxng/entrypoint.sh >/dev/stderr 2>&1 &
 searxng_pid=$!
 
 python - <<'PY'
