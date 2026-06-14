@@ -1,118 +1,28 @@
 services:
-  traefik:
-    image: docker.io/traefik:v3.4
-    container_name: traefik
-    command:
-      - --providers.docker=true
-      - --providers.docker.exposedbydefault=false
-      - --providers.docker.network=searxng
-      - --providers.file.directory=/etc/traefik/dynamic
-      - --providers.file.watch=true
-      - --entrypoints.web.address=:80
-      - --entrypoints.web.http.redirections.entryPoint.to=websecure
-      - --entrypoints.web.http.redirections.entryPoint.scheme=https
-      - --entrypoints.websecure.address=:443
-      - --certificatesresolvers.letsencrypt.acme.email=${LETSENCRYPT_EMAIL}
-      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
-      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
-      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./config/traefik/dynamic:/etc/traefik/dynamic:ro
-      - ./traefik/acme:/letsencrypt
-    restart: unless-stopped
-    networks:
-      - searxng
-
   mcp-searxng:
-    image: docker.io/isokoliuk/mcp-searxng:latest
+    build:
+      context: .
+    image: ghcr.io/psauxwwf/searxng:latest
     container_name: mcp-searxng
-    depends_on:
-      searxng:
-        condition: service_healthy
-    environment:
-      - SEARXNG_URL=http://searxng:8080
-      - MCP_HTTP_PORT=3000
-      - MCP_HTTP_HOST=0.0.0.0
-      - MCP_HTTP_HARDEN=true
-      - MCP_HTTP_AUTH_TOKEN=${MCP_HTTP_AUTH_TOKEN}
-      - MCP_HTTP_ALLOWED_HOSTS=${MCP_HOSTNAME}
-      - MCP_HTTP_ALLOWED_ORIGINS=https://${MCP_HOSTNAME}
-      - MCP_HTTP_ALLOW_PRIVATE_URLS=false
-      - MCP_HTTP_EXPOSE_FULL_CONFIG=false
-    restart: unless-stopped
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=searxng
-      - traefik.http.routers.mcp.rule=Host(`${MCP_HOSTNAME}`)
-      - traefik.http.routers.mcp.entrypoints=websecure
-      - traefik.http.routers.mcp.tls=true
-      - traefik.http.routers.mcp.tls.certresolver=letsencrypt
-      - traefik.http.routers.mcp.middlewares=mcp-security@file,mcp-ratelimit@file
-      - traefik.http.services.mcp.loadbalancer.server.port=3000
-    networks:
-      - searxng
-
-  searxng:
-    # Pinned, not :latest — odysseus waits on searxng's healthcheck
-    # (depends_on: condition: service_healthy), so a broken upstream `latest`
-    # tag blocks the whole app from starting. 2026.6.2 crashes on boot with
-    # `KeyError: 'default_doi_resolver'`, failing the healthcheck (issue #1414).
-    # Bump this deliberately after verifying a newer tag boots clean.
-    image: docker.io/searxng/searxng:2026.5.31-7159b8aed
-    container_name: searxng
     init: true
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        set -eu
-        if [ ! -s /etc/searxng/settings.yml ] || grep -q 'odysseus-local-searxng-json-2026-05-30\|__SEARXNG_SECRET__' /etc/searxng/settings.yml; then
-          secret="$${SEARXNG_SECRET:-}"
-          if [ -z "$$secret" ]; then
-            secret="$$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
-          fi
-          sed -e "s|__SEARXNG_SECRET__|$$secret|g" /tmp/searxng-settings.yml.template > /etc/searxng/settings.yml
-        fi
-        exec /usr/local/searxng/entrypoint.sh
-    volumes:
-      - ./data:/etc/searxng
-      - ./cache:/var/cache/searxng
-      - ./config/searxng/settings.yml:/tmp/searxng-settings.yml.template:ro,z
     environment:
       - SEARXNG_SECRET=${SEARXNG_SECRET:-}
-    # The official searxng image runs as the non-root `searxng` user, but its
-    # entrypoint still needs to chown /etc/searxng on first boot, drop privs via
-    # su-exec, and (with our wrapper above) write settings.yml into the named
-    # volume. Without these capabilities the wrapper aborts at the redirection
-    # with EACCES and the container fails its healthcheck with permission
-    # errors during setup. Mirrors the cap set recommended by the upstream
-    # searxng-docker compose file. See issue #721.
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - SETGID
-      - SETUID
-      - DAC_OVERRIDE
+      - MCP_HTTP_PORT=3000
+      - MCP_HTTP_HOST=0.0.0.0
+      - MCP_HTTP_HARDEN=${MCP_HTTP_HARDEN:-false}
+      - MCP_HTTP_AUTH_TOKEN=${MCP_HTTP_AUTH_TOKEN:-}
+      - MCP_HTTP_ALLOW_PRIVATE_URLS=false
+      - MCP_HTTP_EXPOSE_FULL_CONFIG=false
+    ports:
+      - "3000:3000"
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          'python -c "import urllib.request; req = urllib.request.Request(''http://localhost:8080/'', headers={''X-Real-IP'': ''127.0.0.1''}); urllib.request.urlopen(req, timeout=5).read(1)"',
+          'python -c "import urllib.request; urllib.request.urlopen(''http://127.0.0.1:3000/health'', timeout=5).read(1)"',
         ]
-      interval: 5s
+      interval: 10s
       timeout: 6s
-      retries: 20
-      start_period: 10s
+      retries: 12
+      start_period: 15s
     restart: unless-stopped
-    networks:
-      - searxng
-
-networks:
-  searxng:
-    name: searxng
-    driver: bridge
