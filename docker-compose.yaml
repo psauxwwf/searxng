@@ -2,6 +2,14 @@ services:
   mcp-searxng:
     build:
       context: .
+      dockerfile: Dockerfile
+      args:
+        SEARXNG_VERSION: ${SEARXNG_VERSION:-2026.5.31-7159b8aed}
+        MCP_SEARXNG_VERSION: ${MCP_SEARXNG_VERSION:-latest}
+      cache_from:
+        - type=registry,ref=ghcr.io/psauxwwf/searxng:latest
+      cache_to:
+        - type=inline
     image: ghcr.io/psauxwwf/searxng:latest
     container_name: mcp-searxng
     init: true

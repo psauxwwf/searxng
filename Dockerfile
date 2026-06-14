@@ -1,5 +1,5 @@
 ARG NODE_IMAGE=docker.io/node:lts-bookworm-slim
-ARG SEARXNG_IMAGE=docker.io/searxng/searxng:2026.5.31-7159b8aed
+ARG SEARXNG_VERSION=2026.5.31-7159b8aed
 ARG MCP_SEARXNG_VERSION=latest
 
 FROM ${NODE_IMAGE} AS mcp-build
@@ -8,7 +8,7 @@ ARG MCP_SEARXNG_VERSION
 RUN npm install -g "mcp-searxng@${MCP_SEARXNG_VERSION}" \
     && npm cache clean --force
 
-FROM ${SEARXNG_IMAGE}
+FROM docker.io/searxng/searxng:${SEARXNG_VERSION}
 
 COPY --from=mcp-build /usr/local/bin/node /usr/local/bin/
 COPY --from=mcp-build /usr/local/lib/node_modules /usr/local/lib/node_modules

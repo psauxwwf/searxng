@@ -1,0 +1,44 @@
+---
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+version: "3"
+
+dotenv: [".env"]
+
+vars:
+  docker_compose: docker compose --project-directory .
+
+tasks:
+  build:
+    desc: build searxng image
+    cmds:
+      - "{{.docker_compose}} build mcp-searxng"
+
+  up:
+    desc: start searxng mcp container
+    cmds:
+      - "{{.docker_compose}} up --build --force-recreate"
+
+  push:
+    desc: push searxng image to registry
+    cmds:
+      - "{{.docker_compose}} push mcp-searxng"
+
+  release:
+    desc: build, tag, create github release, and push images
+    cmds:
+      - task: build
+      - >-
+        docker image tag ghcr.io/psauxwwf/searxng:latest
+        ghcr.io/psauxwwf/searxng:{{.SEARXNG_VERSION}}
+      - >-
+        gh release create "{{.SEARXNG_VERSION}}"
+        --target "$(git rev-parse HEAD)"
+        --title "{{.SEARXNG_VERSION}}"
+        --notes "searxng {{.SEARXNG_VERSION}}"
+      - docker push ghcr.io/psauxwwf/searxng:latest
+      - docker push "ghcr.io/psauxwwf/searxng:{{.SEARXNG_VERSION}}"
+
+  rm:
+    desc: stop and remove searxng mcp container
+    cmds:
+      - "{{.docker_compose}} down --remove-orphans"
