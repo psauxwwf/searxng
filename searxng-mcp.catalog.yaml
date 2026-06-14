@@ -1,0 +1,19 @@
+registry:
+  searxng:
+    title: SearXNG
+    description: Private web search via bundled SearXNG and mcp-searxng
+    type: server
+    image: ghcr.io/psauxwwf/searxng:latest
+    tools:
+      - name: searxng_web_search
+      - name: searxng_search_suggestions
+      - name: searxng_instance_info
+      - name: web_url_read
+    metadata:
+      category: search
+      owner: psauxwwf
+      tags:
+        - searxng
+        - search
+        - web
+        - mcp
